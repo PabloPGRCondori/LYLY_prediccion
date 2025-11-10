@@ -1,0 +1,15 @@
+# Dependencias principales
+yfinance>=0.2.37
+pandas>=2.1.0
+numpy>=1.24.0
+scikit-learn>=1.3.0
+matplotlib>=3.7.0
+joblib>=1.3.0
+
+# Dependencias opcionales (para Prophet)
+prophet>=1.1.5
+
+# Dependencias de interfaz gráfica
+tkinter>=8.6
+
+# Nota: tkinter generalmente viene incluido con Python en Windows
