@@ -153,27 +153,3 @@ py prediccion_meta_modular.py
 # 2) En el menú, corre en orden: 1 → 2 → 3 → 4 → 5
 #    (ejecuta por bloques; no hay pipeline completo)
 ```
-
-## Resolución de Problemas
-
-- Error de descarga de datos:
-  - Verifica conexión a Internet y el símbolo `TICKER`.
-  - Ajusta `START_DATE`/`MAX_ROWS` si el rango es demasiado grande.
-- Predicción falla por columnas:
-  - Si cambiaste `compute_technical_features`, reentrena el modelo (opción 3) para alinear `feature_cols`.
-- Resultados variables:
-  - Aumenta `RANDOM_FOREST_N_ESTIMATORS` (ej. 200–300) y mantén `RANDOM_STATE` fijo.
-- Predicción intradía:
-  - Es aproximada; requiere datos intradía reales para mayor fidelidad.
-
-## Mejoras Sugeridas
-
-- Mostrar importancias de features (`model.feature_importances_`) y graficarlas.
-- Validación cruzada temporal (`TimeSeriesSplit`) y búsqueda de hiperparámetros (`max_depth`, `min_samples_leaf`).
-- Intervalos más fiables: bosques cuantílicos o conformal prediction.
-- Features adicionales: MACD, bandas de Bollinger, correlaciones.
-- Logging y reintentos de `yfinance` para robustez operativa.
-
----
-
-Este proyecto es una base sólida y práctica para análisis y predicción diaria de META: rápido de ejecutar, transparente en sus decisiones y fácil de extender.
