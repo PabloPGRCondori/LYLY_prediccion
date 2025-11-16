@@ -11,5 +11,6 @@ prophet>=1.1.5
 
 # Dependencias de interfaz gráfica
 tkinter>=8.6
+streamlit>=1.28.0
 
 # Nota: tkinter generalmente viene incluido con Python en Windows

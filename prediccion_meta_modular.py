@@ -192,25 +192,6 @@ def make_prediction():
     if respuesta.lower() == 's':
         show_decision_window(decision, reasons, last_price, predicted_price, change_pct)
 
-def run_complete_pipeline():
-    """Ejecutar todo el pipeline completo"""
-    print("\n=== EJECUCIÓN COMPLETA DEL PIPELINE ===")
-    
-    # 1. Cargar datos
-    load_and_process_data()
-    
-    # 2. Análisis
-    analyze_data()
-    
-    # 3. Entrenar modelo
-    train_model()
-    
-    # 4. Visualizaciones
-    generate_visualizations()
-    
-    # 5. Predicción y decisión
-    make_prediction()
-
 def show_menu():
     """Mostrar menú interactivo"""
     while True:
@@ -222,12 +203,11 @@ def show_menu():
         print("3. Entrenar modelo")
         print("4. Generar visualizaciones")
         print("5. Hacer predicción y decisión")
-        print("6. Ejecutar pipeline completo")
-        print("7. Limpiar cache de datos")
-        print("8. Salir")
+        print("6. Limpiar cache de datos")
+        print("7. Salir")
         print("-"*60)
         
-        opcion = input("Seleccione una opción (1-8): ")
+        opcion = input("Seleccione una opción (1-7): ")
         
         if opcion == '1':
             use_cache = input("¿Usar cache? (s/n): ").lower() == 's'
@@ -246,12 +226,9 @@ def show_menu():
             make_prediction()
             
         elif opcion == '6':
-            run_complete_pipeline()
-            
-        elif opcion == '7':
             clear_data_cache()
             
-        elif opcion == '8':
+        elif opcion == '7':
             print("Saliendo del sistema...")
             break
             

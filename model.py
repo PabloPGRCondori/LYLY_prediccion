@@ -8,6 +8,11 @@ from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 import joblib
 from math import sqrt
 from config import *
+from sklearn.preprocessing import StandardScaler, MinMaxScaler
+from sklearn.pipeline import Pipeline
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import TimeSeriesSplit, RandomizedSearchCV, GridSearchCV
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score
 
 # Import condicional de Prophet
 try:
@@ -17,7 +22,7 @@ except ImportError:
     PROPHET_AVAILABLE = False
     print("⚠️  Prophet no está instalado. Ejecuta: pip install prophet")
 
-def train_random_forest(df, horizon_days=HORIZON_DAYS, n_estimators=RANDOM_FOREST_N_ESTIMATORS, save_path=MODEL_PATH):
+def train_random_forest(df, horizon_days=HORIZON_DAYS, n_estimators=RANDOM_FOREST_N_ESTIMATORS, save_path=MODEL_PATH, scale_mode=SCALE_MODE, use_tssplit=False, n_splits=5, optimize=False, search_type='random'):
     """
     Entrena RandomForest para predecir precio 'horizon_days' adelante usando features preparados.
     Retorna: modelo, X_test, y_test, y_pred, metrics
@@ -37,10 +42,50 @@ def train_random_forest(df, horizon_days=HORIZON_DAYS, n_estimators=RANDOM_FORES
     X_train, X_test = X.iloc[:split_idx], X.iloc[split_idx:]
     y_train, y_test = y.iloc[:split_idx], y.iloc[split_idx:]
 
-    model = RandomForestRegressor(n_estimators=n_estimators, random_state=RANDOM_STATE, n_jobs=-1)
-    model.fit(X_train, y_train)
+    if scale_mode == 'standard':
+        scaler = StandardScaler()
+    elif scale_mode == 'minmax':
+        scaler = MinMaxScaler()
+    else:
+        scaler = None
 
-    y_pred = model.predict(X_test)
+    if scaler is not None:
+        model_est = RandomForestRegressor(n_estimators=n_estimators, random_state=RANDOM_STATE, n_jobs=-1)
+        model = Pipeline([('scaler', scaler), ('rf', model_est)])
+    else:
+        model = RandomForestRegressor(n_estimators=n_estimators, random_state=RANDOM_STATE, n_jobs=-1)
+
+    if use_tssplit:
+        tscv = TimeSeriesSplit(n_splits=n_splits)
+        X_test_final, y_test_final, y_pred_final = None, None, None
+        for train_index, test_index in tscv.split(X):
+            X_tr, X_te = X.iloc[train_index], X.iloc[test_index]
+            y_tr, y_te = y.iloc[train_index], y.iloc[test_index]
+            est = model
+            if optimize:
+                if isinstance(model, Pipeline):
+                    prefix = 'rf__'
+                else:
+                    prefix = ''
+                params = {
+                    f'{prefix}n_estimators': [50, 100, 200],
+                    f'{prefix}max_depth': [None, 4, 8, 12]
+                }
+                if search_type == 'grid':
+                    search = GridSearchCV(est, params, cv=TimeSeriesSplit(n_splits=3), scoring='neg_mean_squared_error', n_jobs=-1)
+                else:
+                    search = RandomizedSearchCV(est, params, n_iter=8, cv=TimeSeriesSplit(n_splits=3), scoring='neg_mean_squared_error', n_jobs=-1, random_state=RANDOM_STATE)
+                search.fit(X_tr, y_tr)
+                est = search.best_estimator_
+            est.fit(X_tr, y_tr)
+            y_pred_split = est.predict(X_te)
+            model = est
+            X_test_final, y_test_final, y_pred_final = X_te, y_te, y_pred_split
+        y_pred = y_pred_final
+        X_test, y_test = X_test_final, y_test_final
+    else:
+        model.fit(X_train, y_train)
+        y_pred = model.predict(X_test)
 
     metrics = {
         'MAE': mean_absolute_error(y_test, y_pred),
@@ -50,6 +95,134 @@ def train_random_forest(df, horizon_days=HORIZON_DAYS, n_estimators=RANDOM_FORES
 
     # guardar modelo
     joblib.dump((model, feature_cols), save_path)
+    return model, feature_cols, X_test, y_test, y_pred, metrics
+
+def train_random_forest_classifier(df, horizon_days=HORIZON_DAYS, n_estimators=RANDOM_FOREST_N_ESTIMATORS, save_path=MODEL_PATH, scale_mode=SCALE_MODE, use_tssplit=True, n_splits=5, optimize=False, search_type='random'):
+    df = df.copy()
+    df['target_dir'] = (df['Close'].shift(-horizon_days) > df['Close']).astype(int)
+    df = df.dropna().reset_index(drop=True)
+    feature_cols = [c for c in df.columns if c not in ['Date', 'target_dir', 'Close', 'AdjClose']]
+    X = df[feature_cols]
+    y = df['target_dir']
+    split_idx = int(len(df) * 0.8)
+    X_train, X_test = X.iloc[:split_idx], X.iloc[split_idx:]
+    y_train, y_test = y.iloc[:split_idx], y.iloc[split_idx:]
+
+    if scale_mode == 'standard':
+        scaler = StandardScaler()
+    elif scale_mode == 'minmax':
+        scaler = MinMaxScaler()
+    else:
+        scaler = None
+
+    if scaler is not None:
+        clf_est = RandomForestClassifier(n_estimators=n_estimators, random_state=RANDOM_STATE, n_jobs=-1)
+        model = Pipeline([('scaler', scaler), ('rf', clf_est)])
+    else:
+        model = RandomForestClassifier(n_estimators=n_estimators, random_state=RANDOM_STATE, n_jobs=-1)
+
+    if use_tssplit:
+        tscv = TimeSeriesSplit(n_splits=n_splits)
+        X_test_final, y_test_final, y_pred_final, y_proba_final = None, None, None, None
+        for train_index, test_index in tscv.split(X):
+            X_tr, X_te = X.iloc[train_index], X.iloc[test_index]
+            y_tr, y_te = y.iloc[train_index], y.iloc[test_index]
+            est = model
+            if optimize:
+                if isinstance(model, Pipeline):
+                    prefix = 'rf__'
+                else:
+                    prefix = ''
+                params = {
+                    f'{prefix}n_estimators': [50, 100, 200, 300],
+                    f'{prefix}max_depth': [None, 4, 8, 12],
+                    f'{prefix}max_features': ['sqrt', 'log2', None]
+                }
+                if search_type == 'grid':
+                    search = GridSearchCV(est, params, cv=TimeSeriesSplit(n_splits=3), scoring='roc_auc', n_jobs=-1)
+                else:
+                    search = RandomizedSearchCV(est, params, n_iter=12, cv=TimeSeriesSplit(n_splits=3), scoring='roc_auc', n_jobs=-1, random_state=RANDOM_STATE)
+                search.fit(X_tr, y_tr)
+                est = search.best_estimator_
+            est.fit(X_tr, y_tr)
+            y_pred_split = est.predict(X_te)
+            if hasattr(est, 'predict_proba'):
+                y_proba_split = est.predict_proba(X_te)[:, 1]
+            else:
+                y_proba_split = None
+            model = est
+            X_test_final, y_test_final, y_pred_final, y_proba_final = X_te, y_te, y_pred_split, y_proba_split
+        y_pred = y_pred_final
+        X_test, y_test = X_test_final, y_test_final
+        y_proba = y_proba_final
+    else:
+        model.fit(X_train, y_train)
+        y_pred = model.predict(X_test)
+        y_proba = model.predict_proba(X_test)[:, 1] if hasattr(model, 'predict_proba') else None
+
+    roc = roc_auc_score(y_test, y_proba) if y_proba is not None else None
+    metrics = {
+        'Accuracy': accuracy_score(y_test, y_pred),
+        'Precision': precision_score(y_test, y_pred, zero_division=0),
+        'Recall': recall_score(y_test, y_pred, zero_division=0),
+        'F1': f1_score(y_test, y_pred, zero_division=0),
+        'ROC_AUC': roc if roc is not None else 0.0
+    }
+    joblib.dump((model, feature_cols), save_path)
+    return model, feature_cols, X_test, y_test, y_pred, metrics
+
+def train_xgboost_regressor(df, horizon_days=HORIZON_DAYS, n_estimators=200, save_path=MODEL_PATH):
+    try:
+        from xgboost import XGBRegressor
+    except ImportError:
+        print("⚠️  XGBoost no está instalado. Ejecuta: pip install xgboost")
+        return None, [], None, None, None, {}
+    df = df.copy()
+    df['target'] = df['Close'].shift(-horizon_days)
+    df = df.dropna().reset_index(drop=True)
+    feature_cols = [c for c in df.columns if c not in ['Date', 'target', 'Close', 'AdjClose']]
+    X = df[feature_cols]
+    y = df['target']
+    split_idx = int(len(df) * 0.8)
+    X_train, X_test = X.iloc[:split_idx], X.iloc[split_idx:]
+    y_train, y_test = y.iloc[:split_idx], y.iloc[split_idx:]
+    model = XGBRegressor(n_estimators=n_estimators, max_depth=6, subsample=0.8, colsample_bytree=0.8, random_state=RANDOM_STATE)
+    model.fit(X_train, y_train)
+    y_pred = model.predict(X_test)
+    metrics = {
+        'MAE': mean_absolute_error(y_test, y_pred),
+        'RMSE': sqrt(mean_squared_error(y_test, y_pred)),
+        'R2': r2_score(y_test, y_pred)
+    }
+    joblib.dump((model, feature_cols), save_path.replace('.joblib', '_xgb.joblib'))
+    return model, feature_cols, X_test, y_test, y_pred, metrics
+
+def train_xgboost_classifier(df, horizon_days=HORIZON_DAYS, n_estimators=200, save_path=MODEL_PATH):
+    try:
+        from xgboost import XGBClassifier
+    except ImportError:
+        print("⚠️  XGBoost no está instalado. Ejecuta: pip install xgboost")
+        return None, [], None, None, None, {}
+    df = df.copy()
+    df['target_dir'] = (df['Close'].shift(-horizon_days) > df['Close']).astype(int)
+    df = df.dropna().reset_index(drop=True)
+    feature_cols = [c for c in df.columns if c not in ['Date', 'target_dir', 'Close', 'AdjClose']]
+    X = df[feature_cols]
+    y = df['target_dir']
+    split_idx = int(len(df) * 0.8)
+    X_train, X_test = X.iloc[:split_idx], X.iloc[split_idx:]
+    y_train, y_test = y.iloc[:split_idx], y.iloc[split_idx:]
+    model = XGBClassifier(n_estimators=n_estimators, max_depth=6, subsample=0.8, colsample_bytree=0.8, random_state=RANDOM_STATE, use_label_encoder=False, eval_metric='logloss')
+    model.fit(X_train, y_train)
+    y_pred = model.predict(X_test)
+    from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
+    metrics = {
+        'Accuracy': accuracy_score(y_test, y_pred),
+        'Precision': precision_score(y_test, y_pred, zero_division=0),
+        'Recall': recall_score(y_test, y_pred, zero_division=0),
+        'F1': f1_score(y_test, y_pred, zero_division=0)
+    }
+    joblib.dump((model, feature_cols), save_path.replace('.joblib', '_xgb_clf.joblib'))
     return model, feature_cols, X_test, y_test, y_pred, metrics
 
 def train_model(df):
@@ -100,6 +273,16 @@ def predict_future_with_model(model_tuple, last_rows_df, horizon_days=HORIZON_DA
             pred_std = 0.1 * predicted_price  # 10% como aproximación
         
         return predicted_price, pred_std
+
+def predict_future_direction(model_tuple, last_rows_df):
+    model, feature_cols = model_tuple
+    X_last = last_rows_df[feature_cols].iloc[-1:].copy()
+    if hasattr(model, 'predict_proba'):
+        prob = model.predict_proba(X_last)[:, 1][0]
+    else:
+        pred = model.predict(X_last)[0]
+        prob = float(pred)
+    return prob
 
 def predict_hours_with_model(model_tuple, last_rows_df, horizon_hours=HORIZON_HOURS):
     """
@@ -169,6 +352,27 @@ def train_prophet(df, horizon_days=HORIZON_DAYS, save_path=MODEL_PATH):
     # Guardar modelo
     joblib.dump(model, save_path.replace('.joblib', '_prophet.joblib'))
     return model, metrics
+
+def train_prophet_with_eval(df, horizon_days=HORIZON_DAYS):
+    if not PROPHET_AVAILABLE:
+        return None, {}, None, None, None
+    prophet_df = df[['Date', 'Close']].copy()
+    prophet_df.columns = ['ds', 'y']
+    split_idx = int(len(prophet_df) * 0.8)
+    train_df = prophet_df.iloc[:split_idx]
+    test_df = prophet_df.iloc[split_idx:]
+    model = Prophet(daily_seasonality=True, weekly_seasonality=True, yearly_seasonality=True, changepoint_prior_scale=0.05)
+    model.fit(train_df)
+    future = test_df[['ds']].copy()
+    forecast = model.predict(future)
+    y_test = test_df['y'].values
+    y_pred = forecast['yhat'].values
+    metrics = {
+        'MAE': mean_absolute_error(y_test, y_pred),
+        'RMSE': sqrt(mean_squared_error(y_test, y_pred)),
+        'R2': r2_score(y_test, y_pred)
+    }
+    return model, metrics, test_df['ds'].values, y_test, y_pred
 
 def predict_with_prophet(model, last_date, horizon_days=HORIZON_DAYS):
     """

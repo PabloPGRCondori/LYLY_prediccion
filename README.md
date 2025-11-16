@@ -1,17 +1,18 @@
 # Predicción de META (Sistema Modular)
 
-Proyecto en Python para descargar datos reales de META (`yfinance`), generar features técnicos ligeros, entrenar un modelo de predicción (Random Forest por defecto, Prophet opcional), visualizar resultados y emitir una recomendación simple (COMPRAR / VENDER / MANTENER) con explicación.
+Proyecto en Python para descargar datos reales de META (`yfinance`), crear características técnicas y factores externos, entrenar modelos de predicción (regresión o clasificación) con validación temporal y emitir una decisión operativa clara (🟢 COMPRAR / 🔴 VENDER / ⚪ MANTENER) con explicación.
 
 ## Características Clave
 
-- Datos 100% reales: la descarga falla con error si no hay datos válidos (sin datos sintéticos).
-- Flujo por menú interactivo (1–8) para ejecutar por bloques y reducir carga.
-- Features técnicos: retornos, medias móviles (SMA), volatilidad, rango, lags, RSI.
-- Modelos: `RandomForestRegressor` (no lineal, robusto) y `Prophet` (opcional, tendencia/estacionalidad).
-- Métricas claras: MAE, RMSE, R² sobre el tramo más reciente (split temporal 80/20).
-- Visualizaciones: precio y volumen, SMAs y RSI; se guardan en `plots/`.
-- Decisión transparente basada en umbrales y calidad del modelo, con razones impresas y ventana gráfica.
-- Cache de datos procesados para acelerar iteraciones y persistencia de modelo para reproducibilidad.
+- Datos 100% reales: la descarga falla si no hay datos válidos (sin datos sintéticos).
+- Flujo modular por menú para ejecutar por bloques y reducir carga.
+- Features técnicas: retornos, SMA/EMA, MACD, Bandas de Bollinger, Momentum, OBV, volatilidad, lags, RSI.
+- Factores externos: `VIX`, `TNX` (10Y), `GSPC` (S&P500) y sus retornos diarios.
+- Modelos: Random Forest (regresión/clasificación), XGBoost (opcional), Prophet (opcional, tendencia).
+- Validación temporal: `TimeSeriesSplit` con métricas adecuadas a cada tarea.
+- Visualizaciones: precio/volumen e indicadores; se guardan en `plots/`.
+- Decisión transparente con umbrales y explicación.
+- Cache y persistencia para acelerar y reproducir resultados.
 
 ## Estructura del Proyecto
 
@@ -22,12 +23,11 @@ Proyecto en Python para descargar datos reales de META (`yfinance`), generar fea
 ├── decision.py                # Regla de decisión y UI de ventana (tkinter), impresión en consola
 ├── model.py                   # Entrenamiento y predicción (RandomForest / Prophet)
 ├── prediccion_meta_modular.py # Script principal con menú y flujo modular
-├── prediccion_meta.py         # Versión anterior monolítica (referencia)
 ├── visualization.py           # Gráficas de indicadores y estadísticas
 ├── plots/                     # Salida de imágenes PNG (se crean al graficar)
-├── rf_meta_model.joblib       # Modelo Random Forest entrenado + columnas de features
-├── rf_meta_model_prophet.joblib # Modelo Prophet (si se usa)
-└── data_cache.joblib          # Cache de datos procesados
+├── rf_meta_model.joblib       # Modelo entrenado + columnas de features (ignorado en git)
+├── rf_meta_model_prophet.joblib # Modelo Prophet (si se usa, ignorado en git)
+└── data_cache.joblib          # Cache de datos procesados (ignorado en git)
 ```
 
 ## Requisitos
@@ -63,19 +63,11 @@ Edita `config.py` para ajustar el comportamiento:
 
 ## Cómo Ejecutar
 
-- Modo modular (recomendado):
-
 ```bash
 py prediccion_meta_modular.py
 ```
 
 Sigue el menú interactivo para correr cada bloque.
-
-- Modo monolítico de referencia:
-
-```bash
-py prediccion_meta.py
-```
 
 ## Flujo por Menú (prediccion_meta_modular.py)
 
@@ -86,55 +78,54 @@ py prediccion_meta.py
    - Estadísticas básicas (último cierre, promedio, mediana volumen, volatilidad 20 días).
    - Comparación 30 días recientes vs. histórico (medias y volatilidad).
 3. Entrenar modelo
-   - Entrena `RandomForestRegressor` (por defecto) o `Prophet` si `USE_PROPHET=True`.
-   - Muestra métricas en el conjunto de test (último 20%).
+   - Regresión (precio) o Clasificación (dirección 0/1) según configuración en `config.py`.
+   - Modelos disponibles: Random Forest (base), XGBoost (opcional), Prophet (tendencia, regresión).
+   - Validación temporal con `TimeSeriesSplit` (si se activa) y métricas del último split.
 4. Generar visualizaciones
    - Gráficas de precio y volumen, SMAs (5 y 10), RSI 14.
    - Se guardan en `plots/basic_stats.png`, `plots/indicators_sma.png`, `plots/indicators_rsi.png`.
 5. Hacer predicción y decisión
-   - Predicción a `HORIZON_DAYS` y desviación estándar (incertidumbre) del modelo.
-   - Con RF: predicción intradía aproximada a `HORIZON_HOURS`.
+   - Regresión: predicción a `HORIZON_DAYS` con incertidumbre.
+   - Clasificación: probabilidad de subida y decisión por umbral.
    - Emite recomendación y razones; puede abrir ventana (tkinter).
-6. Ejecutar pipeline completo
-   - Corre 1→2→3→4→5 en una secuencia.
-7. Limpiar cache de datos
+6. Limpiar cache de datos
    - Elimina `data_cache.joblib` para recalcular datos procesados.
-8. Salir
+7. Salir
 
 ## Datos y Procesamiento
 
 - Descarga: `data_loader.download_data()` baja columnas estándar (`Date, Open, High, Low, Close, Volume`).
 - Garantía de datos reales: si la descarga falla o viene vacía, se lanza excepción con mensaje claro.
-- Features (`data_loader.compute_technical_features`):
-  - `Return = Close.pct_change()`
-  - `SMA_5`, `SMA_10` sobre `Close`
-  - `Volatility_5` sobre `Return`
-  - `Range = (High - Low) / Open`
-  - Lags: `lag_close_1..3`, `lag_vol_1..3`
-  - `RSI_14` (implementación simple)
-  - `dropna()` para limpiar filas con ventanas y desplazamientos
+- Features internas (`data_loader.compute_technical_features`):
+  - `Return`, `SMA_5`, `SMA_10`, `SMA_20`, `EMA_12`, `EMA_26`, `MACD`, `MACD_signal`
+  - `Volatility_5`, `Volatility_20`, `Range`, lags de `Close` y `Volume`
+  - `RSI_14`, Bandas de Bollinger (`BB_upper`, `BB_lower`, `BB_width`), `Momentum_10`, `OBV`
+  - Limpieza con `dropna()` tras ventanas y desplazamientos
+- Factores externos (`data_loader.augment_with_external_factors`):
+  - `VIX`, `TNX`, `SPX` y sus retornos diarios
 
 ## Modelos
 
-- Random Forest (por defecto):
-  - `train_random_forest`: crea `target = Close.shift(-HORIZON_DAYS)`, excluye `['Date','target','Close','AdjClose']` de `feature_cols`, hace split temporal 80/20.
-  - Persiste `(model, feature_cols)` en `MODEL_PATH`.
-  - Predicción futura usa las últimas features y estima incertidumbre como std entre árboles.
+- Random Forest (base):
+  - Regresión y clasificación; opcionalmente con `StandardScaler`/`MinMaxScaler` vía `Pipeline`.
+  - Validación temporal (`TimeSeriesSplit`) y búsqueda de hiperparámetros (`GridSearchCV`/`RandomizedSearchCV`).
+- XGBoost (opcional):
+  - Regresión y clasificación cuando está instalado (`pip install xgboost`).
 - Prophet (opcional):
-  - Convierte datos a `ds/y`, entrena y evalúa en split temporal 80/20.
-  - Predice usando `yhat` y aproxima incertidumbre con bandas (`yhat_upper/lower`).
+  - Regresión de tendencia/estacionalidad y evaluación en tramo de test.
 
 ## Métricas
 
-- `MAE`, `RMSE`, `R²` en el conjunto de test (tramo más reciente).
-- La decisión usa además la incertidumbre relativa (`pred_std / predicted_price`) y el error relativo (`RMSE / last_price`).
+- Regresión: `MAE`, `RMSE`, `R²` (último split o tramo más reciente).
+- Clasificación: `Accuracy`, `Precision`, `Recall`, `F1`, `ROC-AUC`.
+- La decisión usa incertidumbre y calidad del modelo.
 
 ## Visualizaciones
 
 - `plots/basic_stats.png`: precio de cierre y volumen.
 - `plots/indicators_sma.png`: `Close` + `SMA_5` y `SMA_10`.
 - `plots/indicators_rsi.png`: `RSI_14` con líneas 30/70.
-- En la versión monolítica también se grafica `price_forecast.png` (histórico + test real vs. predicho).
+  
 
 ## Decisión
 
@@ -160,7 +151,7 @@ py prediccion_meta.py
 py prediccion_meta_modular.py
 
 # 2) En el menú, corre en orden: 1 → 2 → 3 → 4 → 5
-#    (opcional: 6 ejecuta todo el pipeline de una vez)
+#    (ejecuta por bloques; no hay pipeline completo)
 ```
 
 ## Resolución de Problemas

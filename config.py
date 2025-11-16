@@ -17,3 +17,6 @@ USE_PROPHET = False
 MODEL_PATH = "rf_meta_model.joblib"  # archivo para guardar modelo
 PLOT_PATH = "plots"                  # carpeta donde guardar png
 DATA_CACHE_PATH = "data_cache.joblib" # cache de datos procesados
+TASK_TYPE = "regression"
+SCALE_MODE = "none"
+INCLUDE_EXTERNALS = False
