@@ -1,8 +1,7 @@
 """
 prediccion_meta_modular.py
 Sistema modular para predicción de META con ejecución por bloques
-
-Ejecutar con: py prediccion_meta_modular.py
+Versión PRO: Incluye Inteligencia de Negocios 360° y Big Data
 """
 
 import os
@@ -13,11 +12,16 @@ warnings.filterwarnings("ignore")
 from config import *
 from data_loader import download_data, compute_technical_features, clear_data_cache
 from analysis import analyze_basic_stats, compare_recent_vs_historical, get_data_summary
-from model import train_random_forest, predict_future_with_model, predict_hours_with_model, load_model, model_exists, train_model as train_model_func
-from visualization import plot_price_and_forecast, plot_indicators, plot_basic_stats
-from decision import decision_rule_and_reason, show_decision_window, print_decision
 
-# Variables globales para compartir datos entre funciones
+# --- CORRECCIÓN CRÍTICA AQUÍ ---
+# Importamos 'train_model' y lo renombramos a 'train_model_func' para mantener compatibilidad
+from model import train_model as train_model_func, predict_future_with_model, predict_hours_with_model, load_model, model_exists
+
+from visualization import plot_price_and_forecast, plot_indicators, plot_basic_stats, plot_big_data_dashboard
+from decision import decision_rule_and_reason, show_decision_window, print_decision
+from market_intelligence import get_sentiment_analysis, get_external_factors
+
+# Variables globales para mantener estado entre bloques
 global_df = None
 global_df_processed = None
 global_model = None
@@ -82,7 +86,7 @@ def train_model():
     
     print("\n=== ENTRENAMIENTO DEL MODELO ===")
     
-    # Usar la nueva función train_model que decide entre Prophet y Random Forest
+    # Usar la función train_model importada correctamente
     model, metrics, model_type = train_model_func(global_df_processed)
     
     if model_type == "prophet":
@@ -115,10 +119,6 @@ def generate_visualizations():
     
     print("\n=== GENERACIÓN DE VISUALIZACIONES ===")
     
-    # Para alinear fechas del test
-    test_start_idx = int(len(global_df_processed) * 0.8)
-    y_test_indexed = global_df_processed.iloc[test_start_idx: test_start_idx + len(global_metrics.get('y_test', []))].reset_index(drop=True)
-    
     # Gráficas
     plot_basic_stats(global_df_processed)
     plot_indicators(global_df_processed)
@@ -126,27 +126,30 @@ def generate_visualizations():
     print("Visualizaciones generadas y guardadas en carpeta 'plots'")
 
 def make_prediction():
-    """Hacer predicción y mostrar decisión"""
+    """Hacer predicción, análisis 360° y decisión final"""
     global global_df_processed, global_model, global_metrics
     
     if global_df_processed is None:
-        print("Primero debe cargar los datos (opción 1)")
+        print("❌ Primero debe cargar los datos (opción 1)")
         return
     
     if global_model is None:
-        print("Primero debe entrenar el modelo (opción 3)")
+        print("❌ Primero debe entrenar el modelo (opción 3)")
         return
     
-    print("\n=== PREDICCIÓN Y DECISIÓN ===")
+    print("\n" + "="*60)
+    print("🤖 INICIANDO SISTEMA DE INTELIGENCIA DE NEGOCIOS (BI)")
+    print("="*60)
     
-    # Cargar modelo si no está en memoria
+    # ---------------------------------------------------------
+    # 1. MODELO MATEMÁTICO (TÉCNICO)
+    # ---------------------------------------------------------
     if global_model is None and model_exists():
         global_model = load_model()
     
-    # Determinar tipo de modelo
     model_type = "prophet" if len(global_model) == 1 else "random_forest"
     
-    # Hacer predicción a 7 días
+    # Predicción a 7 días
     predicted_price, pred_std = predict_future_with_model(
         global_model, 
         global_df_processed, 
@@ -156,53 +159,105 @@ def make_prediction():
     
     last_price = float(global_df_processed['Close'].iloc[-1])
     
-    # Hacer predicción a 20 horas (solo para Random Forest)
+    # Predicción Intradía (solo RF)
     if model_type == "random_forest":
         hourly_predicted_price, hourly_pred_std = predict_hours_with_model(
-            global_model,
-            global_df_processed
+            global_model, global_df_processed
         )
         hourly_change_pct = (hourly_predicted_price - last_price) / last_price
     else:
-        hourly_predicted_price, hourly_pred_std = None, None
-        hourly_change_pct = 0
+        hourly_predicted_price, hourly_pred_std, hourly_change_pct = 0, 0, 0
     
-    print(f"Precio actual: {last_price:.2f} USD")
-    print(f"Predicción a {HORIZON_DAYS} días: {predicted_price:.2f} USD")
-    print(f"Desviación estándar: {pred_std:.4f}")
-    
-    # Mostrar predicción a 20 horas (solo si es Random Forest)
+    print(f"\n📊 ANÁLISIS TÉCNICO (MODELO PREDICTIVO):")
+    print(f"   Precio actual:   {last_price:.2f} USD")
+    print(f"   Objetivo (7d):   {predicted_price:.2f} USD")
+    print(f"   Riesgo/Desv.Std: {pred_std:.4f}")
+
     if model_type == "random_forest":
-        print(f"\nPredicción a 20 horas: {hourly_predicted_price:.2f} USD")
-        print(f"Cambio porcentual: {hourly_change_pct:.2%}")
-        print(f"Desviación estándar (20h): {hourly_pred_std:.4f}")
-    else:
-        print(f"\n⚠️  Predicción a 20 horas no disponible para Prophet")
+        print(f"   Predicción Intradía (20h): {hourly_predicted_price:.2f} USD ({hourly_change_pct:.2%})")
+
+    # ---------------------------------------------------------
+    # 2. BIG DATA & INTELIGENCIA 360° (MEJORADO)
+    # ---------------------------------------------------------
+    print("\n📡 ESCANEANDO BIG DATA EN TIEMPO REAL (ANÁLISIS 360°)...")
     
-    # Tomar decisión para 7 días
+    # A) Análisis de Narrativa y Tópicos (NLP)
+    sentiment, headlines, keywords = get_sentiment_analysis(TICKER)
+    
+    # Determinar etiqueta de texto
+    if sentiment > 0.05: sent_label = "POSITIVO (Optimismo)"
+    elif sentiment < -0.05: sent_label = "NEGATIVO (Miedo)"
+    else: sent_label = "NEUTRAL (Indecisión)"
+    
+    print(f"   📰 Sentiment Score: {sentiment:.4f} => {sent_label}")
+    
+    if keywords:
+        print("   🔑 Tópicos Clave Detectados (Trending Topics):")
+        topicos_str = ", ".join([f"{k[0].upper()}" for k in keywords])
+        print(f"      👉 {topicos_str}")
+    else:
+        print("      (No se detectaron tópicos claros)")
+        
+    print("   Titulares Recientes:")
+    for h in headlines[:3]:
+        print(f"      - {h}")
+
+    # B) Contexto Macroeconómico
+    factors = get_external_factors()
+    print(f"\n🌍 CONTEXTO MACROECONÓMICO GLOBAL:")
+    print(f"   - VIX (Psicología de Masas): {factors.get('VIX', 0):.2f}")
+    print(f"   - Cobre (Termómetro Económico): ${factors.get('Cobre', 0):.2f}")
+    print(f"   - Oro (Refugio): ${factors.get('Oro', 0):.2f}")
+    print(f"   - Dólar (PEN): S/ {factors.get('Dolar_Peru', 0):.2f}")
+
+    # =========================================================
+    # GENERACIÓN DE GRÁFICOS BIG DATA (DASHBOARD 360°)
+    # =========================================================
+    print("\n🎨 Renderizando Dashboard Visual de Big Data...")
+    try:
+        plot_path = plot_big_data_dashboard(sentiment, headlines, keywords, factors)
+        
+        # Intentar abrir la imagen automáticamente (Windows)
+        import os
+        os.startfile(plot_path) 
+        print("   ✅ Dashboard abierto exitosamente.")
+    except Exception as e:
+        print(f"   ⚠️ Aviso: La imagen se guardó en 'plots/' pero no se pudo abrir sola ({e})")
+    # =========================================================
+
+    # ---------------------------------------------------------
+    # 3. TOMA DE DECISIÓN FUSIONADA
+    # ---------------------------------------------------------
     decision, reasons, change_pct = decision_rule_and_reason(
-        last_price, predicted_price, pred_std, global_metrics, horizon_name="7 días"
+        last_price, predicted_price, pred_std, global_metrics, 
+        sentiment_score=sentiment,
+        external_factors=factors,
+        horizon_name="7 días"
     )
     
-    # Mostrar en consola
+    # Mostrar informe final
     print_decision(decision, reasons, last_price, predicted_price, change_pct, horizon_name="7 días")
     
-    # Preguntar si mostrar ventana
-    respuesta = input("\n¿Desea mostrar la ventana gráfica? (s/n): ")
+    # ---------------------------------------------------------
+    # 4. INTERFAZ GRÁFICA DETALLADA
+    # ---------------------------------------------------------
+    respuesta = input("¿Desea mostrar la ventana de decisión detallada? (s/n): ")
     if respuesta.lower() == 's':
-        show_decision_window(decision, reasons, last_price, predicted_price, change_pct)
+        show_decision_window(decision, reasons, last_price, predicted_price, change_pct, 
+                             sentiment_score=sentiment,
+                             external_factors=factors)
 
 def show_menu():
     """Mostrar menú interactivo"""
     while True:
         print("\n" + "="*60)
-        print("SISTEMA MODULAR DE PREDICCIÓN - META")
+        print("SISTEMA DE INTELIGENCIA DE NEGOCIOS - META (PRO)")
         print("="*60)
         print("1. Cargar y procesar datos")
         print("2. Análisis de datos")
         print("3. Entrenar modelo")
         print("4. Generar visualizaciones")
-        print("5. Hacer predicción y decisión")
+        print("5. Hacer predicción y decisión (BI Completo)")
         print("6. Limpiar cache de datos")
         print("7. Salir")
         print("-"*60)
@@ -241,7 +296,7 @@ if __name__ == "__main__":
     # Crear carpeta para plots si no existe
     os.makedirs(PLOT_PATH, exist_ok=True)
     
-    print("Sistema modular de predicción para META")
-    print("Este sistema permite ejecutar por bloques para reducir carga del sistema")
+    print("Iniciando Sistema de Predicción META...")
+    print("Módulos cargados: Big Data, NLP, Macroeconomía")
     
     show_menu()
