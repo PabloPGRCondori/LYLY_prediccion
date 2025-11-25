@@ -28,6 +28,11 @@ venv/
 *.pkl
 data_cache.joblib
 plots/
+gdelt_data/
+*.duckdb
+*.zip
+*.csv
+*.tsv
 
 # Streamlit
 .streamlit/

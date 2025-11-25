@@ -18,6 +18,7 @@ El proyecto está organizado de manera modular para separar responsabilidades:
 | **`analysis.py`** | **Análisis Estadístico.** Calcula métricas descriptivas y compara el comportamiento reciente vs. histórico. |
 | **`visualization.py`** | **Visualización.** Genera gráficos estáticos (PNG) de precios, volumen e indicadores técnicos usando `matplotlib`. |
 | **`decision.py`** | **Lógica de Negocio.** Traduce las predicciones numéricas en decisiones operativas y gestiona la interfaz gráfica de resultados (`tkinter`). |
+| **`big_data.py`** | **Big Data (Nuevo).** Módulo de procesamiento masivo. Descarga slices de GDELT, descomprime y procesa con DuckDB para extraer sentimiento sobre META. |
 
 ## 3. Pipeline de Datos (`data_loader.py`)
 
@@ -92,12 +93,31 @@ Esta lógica asegura que el sistema no solo prediga un número, sino que evalúe
 - **Interfaz (`decision.py`):**
   - Utiliza `tkinter` para mostrar una ventana emergente con la decisión final, el precio objetivo y la lista de razones/advertencias.
 
-## 7. Dependencias Clave
+## 8. Big Data y Análisis de Sentimiento (`big_data.py`)
+
+Este módulo implementa una arquitectura moderna de procesamiento de datos para integrar noticias globales (GDELT Project) en la predicción.
+
+### 8.1. Arquitectura
+- **Fuente:** GDELT 1.0 Event Database (archivos diarios comprimidos en ZIP).
+- **Motor:** DuckDB. Base de datos OLAP embebida que permite ejecutar SQL directo sobre archivos comprimidos y CSV/TSV sin cargarlos completamente en RAM (Out-of-Core Learning).
+- **Filtrado:** Se buscan eventos donde:
+  - `Actor1Name` o `Actor2Name` contenga "META", "FACEBOOK" o "ZUCKERBERG".
+  - Se extrae el `AvgTone` (Tono promedio/Sentimiento) y se agrega por día.
+
+### 8.2. Integración con el Modelo (Fase 3)
+Los datos de sentimiento se fusionan con los precios históricos bajo reglas estrictas:
+1.  **Lagging (Retardo):** Se crea la variable `Sentiment_Lag1`. El sentimiento de "hoy" se usa para predecir el precio de "mañana", evitando el sesgo de anticipación (look-ahead bias).
+2.  **Imputación:** Los días sin noticias relevantes se rellenan con un valor neutral (0).
+3.  **Feature Importance:** El modelo Random Forest evalúa automáticamente qué tanto influye el sentimiento en la predicción final.
+
+## 9. Dependencias Clave
 
 El proyecto se basa en el stack científico estándar de Python:
 - **`yfinance`**: Descarga de datos financieros.
 - **`pandas` / `numpy`**: Manipulación de datos y cálculos vectoriales.
 - **`scikit-learn`**: Algoritmos de ML (Random Forest) y métricas.
+- **`duckdb`**: Procesamiento SQL de alto rendimiento para Big Data.
+- **`requests`**: Descarga de archivos GDELT.
 - **`matplotlib`**: Generación de gráficos.
 - **`joblib`**: Persistencia de modelos y datos (caché).
 - **`prophet` / `xgboost`**: Librerías opcionales para modelos avanzados.

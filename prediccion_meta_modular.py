@@ -7,6 +7,7 @@ Ejecutar con: py prediccion_meta_modular.py
 
 import os
 import warnings
+import pandas as pd
 warnings.filterwarnings("ignore")
 
 # Importar módulos
@@ -53,6 +54,10 @@ def run_big_data():
                 print("✅ Gráfico 'impacto_noticias_meta.png' generado en carpeta 'plots'.")
             else:
                 print("⚠️ No se pudieron obtener datos de precios para generar el gráfico.")
+            
+            # Recargar y procesar datos para incluir Big Data en el set de entrenamiento
+            print("\n🔄 Actualizando dataset de entrenamiento con Big Data...")
+            load_and_process_data(use_cache=True)
                 
         else:
             print("\n⚠️ No se obtuvieron datos de Big Data.")
@@ -61,7 +66,7 @@ def run_big_data():
 
 def load_and_process_data(use_cache=True):
     """Carga y procesa los datos"""
-    global global_df, global_df_processed
+    global global_df, global_df_processed, global_big_data_df
     
     print("\n=== CARGA Y PROCESAMIENTO DE DATOS ===")
     
@@ -74,6 +79,36 @@ def load_and_process_data(use_cache=True):
     df_processed = compute_technical_features(df)
     print(f"Datos procesados: {len(df_processed)} filas con features técnicos")
     
+    # INTEGRACIÓN BIG DATA (Fase 3)
+    if global_big_data_df is not None:
+        print("\n🔄 Integrando Big Data (GDELT) al dataset principal...")
+        
+        # Asegurar formato fecha
+        df_processed['Date'] = pd.to_datetime(df_processed['Date'])
+        global_big_data_df['Date'] = pd.to_datetime(global_big_data_df['Date'])
+        
+        # Merge (Left join para mantener todos los días de trading)
+        df_merged = pd.merge(df_processed, global_big_data_df[['Date', 'Avg_Sentiment', 'News_Volume']], on='Date', how='left')
+        
+        # 1. Feature Engineering: Lagging (Sentiment_Lag1)
+        # Regla: NO usar sentimiento de hoy para predecir hoy/mañana (evitar look-ahead bias de publicación)
+        # Usamos el sentimiento de ayer (shift 1)
+        df_merged['Sentiment_Lag1'] = df_merged['Avg_Sentiment'].shift(1)
+        
+        # 2. Imputation (Manejo de vacíos)
+        # Rellenar con 0 (Neutral)
+        df_merged['Avg_Sentiment'] = df_merged['Avg_Sentiment'].fillna(0)
+        df_merged['News_Volume'] = df_merged['News_Volume'].fillna(0)
+        df_merged['Sentiment_Lag1'] = df_merged['Sentiment_Lag1'].fillna(0)
+        
+        # Eliminar 'Avg_Sentiment' actual para asegurar que el modelo NO lo use
+        # (Solo permitimos Sentiment_Lag1 y News_Volume)
+        df_merged.drop(columns=['Avg_Sentiment'], inplace=True)
+        
+        df_processed = df_merged
+        print(f"✅ Big Data integrado. Nuevos features: Sentiment_Lag1, News_Volume.")
+        print("   (Avg_Sentiment eliminado del set de entrenamiento para evitar bias)")
+
     global_df = df
     global_df_processed = df_processed
     
@@ -127,6 +162,36 @@ def train_model():
     else:
         print("✅ Modelo Random Forest entrenado exitosamente")
         global_model = (model, metrics.get('feature_cols', []))
+        
+        # --- FASE 3: Feature Importance ---
+        try:
+            feature_cols = metrics.get('feature_cols', [])
+            
+            # Obtener importancias
+            if hasattr(model, 'feature_importances_'):
+                importances = model.feature_importances_
+            elif hasattr(model, 'named_steps') and hasattr(model.named_steps['rf'], 'feature_importances_'):
+                importances = model.named_steps['rf'].feature_importances_
+            else:
+                importances = None
+                
+            if importances is not None:
+                # Crear DataFrame y ordenar
+                feat_imp = pd.DataFrame({'feature': feature_cols, 'importance': importances})
+                feat_imp = feat_imp.sort_values('importance', ascending=False).reset_index(drop=True)
+                
+                print("\n📊 Importancia de Variables (Top 10):")
+                print(feat_imp.head(10).to_string(index=False))
+                
+                # Verificar Sentiment_Lag1
+                if 'Sentiment_Lag1' in feat_imp['feature'].values:
+                    rank = feat_imp[feat_imp['feature'] == 'Sentiment_Lag1'].index[0] + 1
+                    imp_val = feat_imp[feat_imp['feature'] == 'Sentiment_Lag1']['importance'].values[0]
+                    print(f"\n🔍 Sentiment_Lag1: Puesto #{rank} (Importancia: {imp_val:.4f})")
+                else:
+                    print("\n⚠️ Sentiment_Lag1 no fue usado en el modelo.")
+        except Exception as e:
+            print(f"No se pudo calcular importancia de variables: {e}")
     
     print("\nMétricas en test:")
     for k, v in metrics.items():
