@@ -14,14 +14,50 @@ from config import *
 from data_loader import download_data, compute_technical_features, clear_data_cache
 from analysis import analyze_basic_stats, compare_recent_vs_historical, get_data_summary
 from model import train_random_forest, predict_future_with_model, predict_hours_with_model, load_model, model_exists, train_model as train_model_func
-from visualization import plot_price_and_forecast, plot_indicators, plot_basic_stats
+from visualization import plot_price_and_forecast, plot_indicators, plot_basic_stats, plot_sentiment_vs_price
 from decision import decision_rule_and_reason, show_decision_window, print_decision
+from big_data import run_big_data_pipeline
 
 # Variables globales para compartir datos entre funciones
 global_df = None
 global_df_processed = None
 global_model = None
 global_metrics = None
+global_big_data_df = None
+
+def run_big_data():
+    """Ejecuta el pipeline de Big Data"""
+    global global_big_data_df, global_df
+    
+    print("\n=== PIPELINE DE BIG DATA (GDELT + DuckDB) ===")
+    print("Este módulo descarga datos masivos de noticias globales y los procesa en memoria eficiente.")
+    
+    try:
+        df = run_big_data_pipeline()
+        if not df.empty:
+            global_big_data_df = df
+            print(f"\n✅ Big Data procesada exitosamente. {len(df)} registros listos para fusión.")
+            
+            # --- FASE 2: Visualización Automática ---
+            print("\n=== GENERANDO VISUALIZACIÓN DE IMPACTO (Precios vs Noticias) ===")
+            
+            # Verificar si tenemos datos de precios cargados
+            if global_df is None:
+                print("Datos de precios no encontrados en memoria. Descargando historial reciente de META...")
+                # Descargamos datos usando el cargador existente
+                # No usamos cache para asegurar datos recientes alineados con GDELT
+                global_df = download_data(use_cache=True) 
+            
+            if global_df is not None and not global_df.empty:
+                plot_sentiment_vs_price(global_big_data_df, global_df)
+                print("✅ Gráfico 'impacto_noticias_meta.png' generado en carpeta 'plots'.")
+            else:
+                print("⚠️ No se pudieron obtener datos de precios para generar el gráfico.")
+                
+        else:
+            print("\n⚠️ No se obtuvieron datos de Big Data.")
+    except Exception as e:
+        print(f"\n❌ Error en pipeline de Big Data: {e}")
 
 def load_and_process_data(use_cache=True):
     """Carga y procesa los datos"""
@@ -204,10 +240,11 @@ def show_menu():
         print("4. Generar visualizaciones")
         print("5. Hacer predicción y decisión")
         print("6. Limpiar cache de datos")
-        print("7. Salir")
+        print("7. Pipeline Big Data (Experimental)")
+        print("8. Salir")
         print("-"*60)
         
-        opcion = input("Seleccione una opción (1-7): ")
+        opcion = input("Seleccione una opción (1-8): ")
         
         if opcion == '1':
             use_cache = input("¿Usar cache? (s/n): ").lower() == 's'
@@ -229,6 +266,9 @@ def show_menu():
             clear_data_cache()
             
         elif opcion == '7':
+            run_big_data()
+            
+        elif opcion == '8':
             print("Saliendo del sistema...")
             break
             

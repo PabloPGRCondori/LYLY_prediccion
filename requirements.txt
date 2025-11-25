@@ -10,7 +10,9 @@ joblib>=1.3.0
 prophet>=1.1.5
 
 # Dependencias de interfaz gráfica
-tkinter>=8.6
-streamlit>=1.28.0
+# tkinter viene incluido en Python, no se instala via pip
+# streamlit>=1.28.0
 
-# Nota: tkinter generalmente viene incluido con Python en Windows
+# Big Data dependencies
+duckdb>=0.9.0
+requests>=2.31.0
