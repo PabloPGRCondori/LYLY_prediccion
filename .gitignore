@@ -33,6 +33,7 @@ gdelt_data/
 *.zip
 *.csv
 *.tsv
+gdelt_history_1year.csv
 
 # Streamlit
 .streamlit/
