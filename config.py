@@ -5,7 +5,8 @@ config.py - Configuración centralizada del sistema
 # -----------------------------
 # CONFIGURACIÓN (ajustable)
 # -----------------------------
-TICKER = "META"                      # ticker a analizar
+TICKERS = ["META", "GOOGL", "AMZN", "MSFT", "TSLA", "NVDA"] # Lista de activos
+TICKER = "META"                      # ticker a analizar (legacy)
 START_DATE = "2021-01-01"            # fecha inicio (puedes acortarla para menos procesamiento)
 END_DATE = None                      # None -> hasta hoy
 HORIZON_DAYS = 7                     # horizonte de predicción (días futuros que evaluamos)

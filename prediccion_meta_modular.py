@@ -14,7 +14,7 @@ warnings.filterwarnings("ignore")
 from config import *
 from data_loader import download_data, compute_technical_features, clear_data_cache
 from analysis import analyze_basic_stats, compare_recent_vs_historical, get_data_summary
-from model import train_random_forest, predict_future_with_model, predict_hours_with_model, load_model, model_exists, train_model as train_model_func
+from model import train_model, load_model, predict_future_with_model, predict_future_direction, predict_hours_with_model, model_exists
 from visualization import plot_price_and_forecast, plot_indicators, plot_basic_stats, plot_sentiment_vs_price
 from decision import decision_rule_and_reason, show_decision_window, print_decision
 from big_data import run_big_data_pipeline
@@ -154,7 +154,7 @@ def train_model():
     print("\n=== ENTRENAMIENTO DEL MODELO ===")
     
     # Usar la nueva función train_model que decide entre Prophet y Random Forest
-    model, metrics, model_type = train_model_func(global_df_processed)
+    model, metrics, model_type = train_model(global_df_processed)
     
     if model_type == "prophet":
         print("✅ Modelo Prophet entrenado exitosamente")

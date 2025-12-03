@@ -11,41 +11,47 @@ from config import *
 def download_data(ticker=TICKER, start=START_DATE, end=END_DATE, max_rows=MAX_ROWS, use_cache=True):
     """Descarga datos históricos desde Yahoo Finance y aplica limite de filas."""
     
-    if use_cache and os.path.exists(DATA_CACHE_PATH):
-        print("Cargando datos desde cache...")
-        return joblib.load(DATA_CACHE_PATH)
+    # Ajustar cache por ticker
+    cache_path = DATA_CACHE_PATH.replace(".joblib", f"_{ticker}.joblib")
+
+    if use_cache and os.path.exists(cache_path):
+        # print(f"Cargando datos de {ticker} desde cache...")
+        return joblib.load(cache_path)
     
-    print("Descargando datos desde Yahoo Finance...")
+    print(f"Descargando datos de {ticker} desde Yahoo Finance...")
     try:
         df = yf.download(ticker, start=start, end=end, progress=False)
         
         if df.empty:
-            print("❌ ERROR: No se pudieron descargar datos desde Yahoo Finance.")
-            print("   Verifica:")
-            print("   1. Tu conexión a internet")
-            print("   2. El ticker 'META' es correcto")
-            print("   3. Las fechas de inicio y fin son válidas")
-            raise Exception("No se pudieron descargar datos reales. Verifica tu conexión y configuración.")
+            print(f"❌ ERROR: No se pudieron descargar datos para {ticker}.")
+            return pd.DataFrame() # Retornar vacío en lugar de explotar
         
+        # Limpieza de columnas MultiIndex (si existen)
+        if isinstance(df.columns, pd.MultiIndex):
+            df.columns = df.columns.get_level_values(0)
+
         df = df.reset_index()
         if len(df) > max_rows:
             df = df.tail(max_rows).reset_index(drop=True)
         
         # Verificar que las columnas existan antes de seleccionarlas
         required_columns = ['Date', 'Open', 'High', 'Low', 'Close', 'Adj Close', 'Volume']
+        # Fix column names if simple index but possibly different case
+        df.columns = [c.title() if isinstance(c, str) else c for c in df.columns]
+        
         available_columns = [col for col in required_columns if col in df.columns]
         
         if len(available_columns) < len(required_columns):
-            print(f"⚠️  Faltan columnas: {set(required_columns) - set(available_columns)}")
-            print("💡 Ajustando estructura de datos...")
-            
-            # Asegurar que tengamos todas las columnas necesarias
-            for col in required_columns:
-                if col not in df.columns:
-                    if col == 'Adj Close':
-                        df['Adj Close'] = df.get('Close', 0)  # Usar Close si no hay Adj Close
-                    elif col == 'Volume':
-                        df['Volume'] = 1000000  # Valor por defecto
+            # Intentar mapear si faltan (a veces YF devuelve 'Adj Close' como 'Adj Close')
+            pass 
+        
+        # Asegurar columnas
+        for col in required_columns:
+            if col not in df.columns:
+                if col == 'Adj Close':
+                    df['Adj Close'] = df.get('Close', 0)
+                elif col == 'Volume':
+                    df['Volume'] = 1000000
         
         # Seleccionar y renombrar columnas
         df = df[required_columns]
@@ -54,15 +60,14 @@ def download_data(ticker=TICKER, start=START_DATE, end=END_DATE, max_rows=MAX_RO
         
         # Guardar en cache
         if use_cache:
-            joblib.dump(df, DATA_CACHE_PATH)
-            print(f"✅ Datos guardados en cache: {DATA_CACHE_PATH}")
+            joblib.dump(df, cache_path)
+            # print(f"✅ Datos de {ticker} guardados en cache")
         
         return df
     
     except Exception as e:
-        print(f"❌ ERROR CRÍTICO al descargar datos: {e}")
-        print("   No se pueden generar datos de ejemplo. Solo se aceptan datos reales.")
-        raise Exception(f"Error al descargar datos reales: {e}")
+        print(f"❌ ERROR CRÍTICO al descargar datos de {ticker}: {e}")
+        return pd.DataFrame()
 
 def compute_technical_features(df):
     """Crea features simples y avanzados para el modelo."""
