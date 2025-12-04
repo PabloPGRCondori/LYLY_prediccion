@@ -161,3 +161,43 @@ def clear_data_cache():
         print("Cache de datos eliminado")
     else:
         print("No hay cache de datos para eliminar")
+
+
+def calculate_support_resistance(df, window=20):
+    """
+    Identifica niveles de soporte y resistencia locales en los últimos 'window' días.
+    Retorna el soporte y resistencia más cercanos al precio actual.
+    """
+    if len(df) < window:
+        return None, None
+        
+    recent_df = df.tail(window)
+    current_price = df.iloc[-1]['Close']
+    
+    # Mínimo local (Soporte)
+    support = recent_df['Low'].min()
+    
+    # Máximo local (Resistencia)
+    resistance = recent_df['High'].max()
+    
+    return support, resistance
+
+def get_fundamental_info(ticker):
+    """
+    Obtiene información fundamental básica y recomendaciones de analistas desde Yahoo Finance.
+    """
+    try:
+        t = yf.Ticker(ticker)
+        info = t.info
+        
+        return {
+            'recommendation': info.get('recommendationKey', 'none'),
+            'target_price': info.get('targetMeanPrice', None),
+            'pe_ratio': info.get('trailingPE', None),
+            'forward_pe': info.get('forwardPE', None),
+            'beta': info.get('beta', None),
+            'analysts_count': info.get('numberOfAnalystOpinions', 0)
+        }
+    except Exception as e:
+        print(f"Error obteniendo fundamentales para {ticker}: {e}")
+        return {}

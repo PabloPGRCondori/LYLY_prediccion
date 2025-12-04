@@ -21,3 +21,9 @@ DATA_CACHE_PATH = "data_cache.joblib" # cache de datos procesados
 TASK_TYPE = "regression"
 SCALE_MODE = "none"
 INCLUDE_EXTERNALS = False
+
+# -----------------------------
+# API KEYS
+# -----------------------------
+import os
+PERPLEXITY_API_KEY = os.getenv("PERPLEXITY_API_KEY") # Set this in your environment or .env file
